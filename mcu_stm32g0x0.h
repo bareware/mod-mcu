@@ -1,9 +1,11 @@
+/* SPDX-License-Identifier: MIT-0 | Copyright (c) 2026 bareware */
+
 #ifndef MCU_STM32G0x0
 #define MCU_STM32G0x0
 
 #include <stdint.h>
 
-// COMMON
+// Utilities
 
 static inline uint32_t mask_x2(uint32_t mask) {
     mask = (mask | (mask << 8 )) & 0x00ff00ff;
