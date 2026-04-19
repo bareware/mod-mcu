@@ -3,29 +3,56 @@
 #ifndef MCU_STM32G0x0
 #define MCU_STM32G0x0
 
+#include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 // Utilities
 
-static inline uint32_t mask_x2(uint32_t mask) {
-    mask = (mask | (mask << 8 )) & 0x00ff00ff;
-    mask = (mask | (mask << 4 )) & 0x0f0f0f0f;
-    mask = (mask | (mask << 2 )) & 0x33333333;
-    mask = (mask | (mask << 1 )) & 0x55555555;
-    mask |= mask << 1;
-    return mask;
-}
+[[gnu::error("Mask must be a compile-time constant!")]]
+extern void _error_not_constant(void);
+
+#define _const_mask_x2(mask) ({                         \
+        const uint32_t res =                            \
+            (((mask) & (1<<0x0)) ? (0x3 <<  0) : 0) |   \
+            (((mask) & (1<<0x1)) ? (0x3 <<  2) : 0) |   \
+            (((mask) & (1<<0x2)) ? (0x3 <<  4) : 0) |   \
+            (((mask) & (1<<0x3)) ? (0x3 <<  6) : 0) |   \
+            (((mask) & (1<<0x4)) ? (0x3 <<  8) : 0) |   \
+            (((mask) & (1<<0x5)) ? (0x3 << 10) : 0) |   \
+            (((mask) & (1<<0x6)) ? (0x3 << 12) : 0) |   \
+            (((mask) & (1<<0x7)) ? (0x3 << 14) : 0) |   \
+            (((mask) & (1<<0x8)) ? (0x3 << 16) : 0) |   \
+            (((mask) & (1<<0x9)) ? (0x3 << 18) : 0) |   \
+            (((mask) & (1<<0xA)) ? (0x3 << 20) : 0) |   \
+            (((mask) & (1<<0xB)) ? (0x3 << 22) : 0) |   \
+            (((mask) & (1<<0xC)) ? (0x3 << 24) : 0) |   \
+            (((mask) & (1<<0xD)) ? (0x3 << 26) : 0) |   \
+            (((mask) & (1<<0xE)) ? (0x3 << 28) : 0) |   \
+            (((mask) & (1<<0xF)) ? (0x3 << 30) : 0);    \
+        if (!__builtin_constant_p(res)) {               \
+            _error_not_constant();                      \
+        }                                               \
+        res;                                            \
+    })
+
+#define _const_mask_x4(mask) ({                         \
+        const uint32_t res =                            \
+            (((mask) & (1<<0x0)) ? (0xF <<  0) : 0) |   \
+            (((mask) & (1<<0x1)) ? (0xF <<  4) : 0) |   \
+            (((mask) & (1<<0x2)) ? (0xF <<  8) : 0) |   \
+            (((mask) & (1<<0x3)) ? (0xF << 12) : 0) |   \
+            (((mask) & (1<<0x4)) ? (0xF << 16) : 0) |   \
+            (((mask) & (1<<0x5)) ? (0xF << 20) : 0) |   \
+            (((mask) & (1<<0x6)) ? (0xF << 24) : 0) |   \
+            (((mask) & (1<<0x7)) ? (0xF << 28) : 0);    \
+        if (!__builtin_constant_p(res)) {               \
+            _error_not_constant();                      \
+        }                                               \
+        res;                                            \
+    })
 
 // RCC
-
-typedef enum {
-    rcc_gpio_a = (1 << 0),
-    rcc_gpio_b = (1 << 1),
-    rcc_gpio_c = (1 << 2),
-    rcc_gpio_d = (1 << 3),
-    rcc_gpio_e = (1 << 4),
-    rcc_gpio_f = (1 << 5),
-} rcc_gpio_t;
 
 typedef struct {
     volatile uint32_t cr;           // (RCC_CR)         Clock control register
@@ -58,12 +85,23 @@ typedef struct {
 
 static volatile rcc_t* const rcc = ((rcc_t*)(0x40021000));
 
-static inline void rcc_gpio_clk_enable(rcc_gpio_t gpio) {
-    rcc->iopenr |= gpio;
+typedef enum {
+    rcc_clk_gpio_a  = (offsetof(rcc_t, ioprstr)  << 16) | (offsetof(rcc_t, iopenr)  << 8) | 0x00,
+    rcc_clk_gpio_b  = (offsetof(rcc_t, ioprstr)  << 16) | (offsetof(rcc_t, iopenr)  << 8) | 0x01,
+    rcc_clk_gpio_c  = (offsetof(rcc_t, ioprstr)  << 16) | (offsetof(rcc_t, iopenr)  << 8) | 0x02,
+    rcc_clk_gpio_d  = (offsetof(rcc_t, ioprstr)  << 16) | (offsetof(rcc_t, iopenr)  << 8) | 0x03,
+    rcc_clk_gpio_e  = (offsetof(rcc_t, ioprstr)  << 16) | (offsetof(rcc_t, iopenr)  << 8) | 0x04,
+    rcc_clk_gpio_f  = (offsetof(rcc_t, ioprstr)  << 16) | (offsetof(rcc_t, iopenr)  << 8) | 0x05,
+    rcc_clk_usart_1 = (offsetof(rcc_t, apbrstr2) << 16) | (offsetof(rcc_t, apbenr2) << 8) | 0x0E,
+    rcc_clk_usart_2 = (offsetof(rcc_t, apbrstr1) << 16) | (offsetof(rcc_t, apbenr1) << 8) | 0x11,
+} rcc_clk_t;
+
+static inline void rcc_clk_enable(rcc_clk_t clk) {
+    *(volatile uint32_t*)((uint8_t*)rcc + ((clk >>  8) & 0xFF)) |= 1 << (clk & 0xFF);
 }
 
-static inline void rcc_gpio_clk_disable(rcc_gpio_t gpio) {
-    rcc->iopenr &= gpio;
+static inline void rcc_clk_disable(rcc_clk_t clk) {
+    *(volatile uint32_t*)((uint8_t*)rcc + ((clk >> 16) & 0xFF)) |= 1 << (clk & 0xFF);
 }
 
 // GPIO
@@ -86,6 +124,23 @@ typedef enum {
     gpio_speed_high         = 0xAAAAAAAA,
     gpio_speed_very_high    = 0xFFFFFFFF,
 } gpio_speed_t;
+
+typedef enum {
+    gpio_pull_none          = 0x00000000,
+    gpio_pull_up            = 0x55555555,
+    gpio_pull_down          = 0xAAAAAAAA,
+} gpio_pull_t;
+
+typedef enum {
+    gpio_af_0               = 0x00000000,
+    gpio_af_1               = 0x11111111,
+    gpio_af_2               = 0x22222222,
+    gpio_af_3               = 0x33333333,
+    gpio_af_4               = 0x44444444,
+    gpio_af_5               = 0x55555555,
+    gpio_af_6               = 0x66666666,
+    gpio_af_7               = 0x77777777,
+} gpio_af_t;
 
 typedef struct {
     volatile uint32_t moder;     // (GPIOx_MODER)   GPIO port mode register
@@ -128,11 +183,36 @@ typedef enum {
 } gpio_pin_t;
 
 static inline void gpio_setup_output(gpio_t* port, gpio_output_type_t type, gpio_speed_t speed, gpio_pin_t pins) {
-    const uint32_t pins2 = mask_x2(pins);
+    const uint32_t pins2 = _const_mask_x2(pins);
 
     port->otyper  = (port->otyper  & ~pins ) | (pins  & type);
     port->ospeedr = (port->ospeedr & ~pins2) | (pins2 & speed);
     port->moder   = (port->moder   & ~pins2) | (pins2 & gpio_mode_output);
+}
+
+static inline void gpio_setup_input(gpio_t* port, gpio_pull_t pull, gpio_pin_t pins) {
+    const uint32_t pins2  = _const_mask_x2(pins);
+
+    port->pupdr = (port->pupdr & ~pins2) | (pins2 & pull);
+    port->moder = (port->moder & ~pins2) | (pins2 & gpio_mode_input);
+}
+
+static inline void gpio_setup_alt_func(gpio_t* port, gpio_af_t af, gpio_pull_t pull, gpio_output_type_t type, gpio_speed_t speed, gpio_pin_t pins) {
+    const uint32_t pins2  = _const_mask_x2(pins);
+    const uint32_t pins4l = _const_mask_x4(pins);
+    const uint32_t pins4h = _const_mask_x4(pins >> 8);
+
+    port->otyper  = (port->otyper  & ~pins ) | (pins  & type);
+    port->ospeedr = (port->ospeedr & ~pins2) | (pins2 & speed);
+    port->moder   = (port->moder   & ~pins2) | (pins2 & gpio_mode_af);
+    port->pupdr   = (port->pupdr   & ~pins2) | (pins2 & pull);
+
+    if (pins4l) {
+        port->afrl = (port->afrl & ~pins4l) | (af & pins4l);
+    }
+    if (pins4h) {
+        port->afrh = (port->afrh & ~pins4h) | (af & pins4h);
+    }
 }
 
 static inline uint16_t gpio_read(gpio_t* port, gpio_pin_t pins) {
@@ -151,6 +231,96 @@ static inline void gpio_set(gpio_t* port, gpio_pin_t pins) {
 static inline void gpio_clear(gpio_t* port, gpio_pin_t pins) {
     port->bsrr = (pins << 16);
 }
+
+// USART
+
+typedef struct {
+    volatile uint32_t cr1;          // (USART_CR1)   USART control register 1
+    volatile uint32_t cr2;          // (USART_CR2)   USART control register 2
+    volatile uint32_t cr3;          // (USART_CR3)   USART control register 3
+    volatile uint32_t brr;          // (USART_BRR)   USART baud rate register
+    volatile uint32_t gtpr;         // (USART_GRPR)  USART guard time and prescaler register
+    volatile uint32_t rtor;         // (USART_RTOR)  USART receiver timeout register
+    volatile uint32_t rqr;          // (USART_RQR)   USART request register
+    volatile uint32_t isr;          // (USART_ISR)   USART interrupt and status register
+    volatile uint32_t icr;          // (USART_ICR)   USART interrupt flag clear register
+    volatile uint32_t rdr;          // (USART_RDR)   USART receive data register
+    volatile uint32_t tdr;          // (USART_TDR)   USART transmit data register
+    volatile uint32_t presc;        // (USART_PRESC) USART prescaler register
+} usart_t;
+
+typedef enum {
+    usart_databits_7 = 0x01000000,
+    usart_databits_8 = 0x00000000,
+    usart_databits_9 = 0x00001000,
+} usart_databits_t;
+
+typedef enum {
+    usart_parity_none = 0x00000000,
+    usart_parity_even = 0x00000400,
+    usart_parity_odd  = 0x00000600,
+} usart_parity_t;
+
+typedef enum {
+    usart_stopbits_0_5 = 0x00001000,
+    usart_stopbits_1   = 0x00000000,
+    usart_stopbits_1_5 = 0x00003000,
+    usart_stopbits_2   = 0x00002000,
+} usart_stopbits_t;
+
+typedef enum {
+    usart_mode_rx = 0x00000004,
+    usart_mode_tx = 0x00000008,
+} usart_mode_t;
+
+typedef enum {
+    usart_flowcontrol_none = 0x00000000,
+    usart_flowcontrol_rts  = 0x00000100,
+    usart_flowcontrol_cts  = 0x00000200,
+} usart_flowcontrol_t;
+
+typedef struct {
+    uint32_t baud;
+    usart_databits_t databits;
+    usart_parity_t parity;
+    usart_stopbits_t stopbits;
+    usart_mode_t mode;
+    usart_flowcontrol_t flowcontrol;
+} usart_config_t;
+
+static usart_t* const usart_1 = (usart_t*)0x40013800;
+static usart_t* const usart_2 = (usart_t*)0x40004400;
+
+static inline void usart_enable(usart_t* usart, uint32_t apb_clk, usart_config_t config) {
+    const uint32_t usart_cr1_ue = 0x00000001;
+
+    const uint64_t inv_baud_q32 = (4294967296ull + (config.baud) / 2) / (config.baud);
+    const uint32_t brr = (uint32_t)((apb_clk * inv_baud_q32 + 0x80000000) >> 32);
+
+    usart->brr = brr;
+    usart->cr3 = config.flowcontrol;
+    usart->cr2 = config.stopbits;
+    usart->cr1 = config.databits | config.parity | config.mode | usart_cr1_ue;
+}
+
+static inline void usart_disable(usart_t* usart) {
+    usart->cr1 = 0;
+}
+
+static inline void usart_send(usart_t* usart, uint16_t data) {
+    const uint32_t usart_isr_txe = 0x00000080;
+    while (!(usart->isr & usart_isr_txe)) { }
+    usart->tdr = data;
+}
+
+static inline uint16_t usart_recv(usart_t* usart) {
+    const uint32_t usart_isr_rxnf = 0x00000020;
+    while (!(usart->isr & usart_isr_rxnf)) { }
+    return usart->rdr;
+}
+
+#undef _const_mask_x2
+#undef _const_mask_x4
 
 #endif
 
